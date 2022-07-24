@@ -24,6 +24,15 @@ import os
 import gzip
 import pandas as pd
 
+def load_maf(fp):
+    with open(fp, 'r') as f:
+        line = f.readline()
+    if line.startswith('#'):
+        return pd.read_csv(fp, sep = '\t', skiprows = 1)
+    else:
+        return pd.read_csv(fp, sep = '\t')
+
+
 """
 Extract purity and ploidy info from FACETS generated VCF file
 """
@@ -95,7 +104,8 @@ Combine mutations from MAF file with CN segments from FACETS
 with purity/ploidy information
 """
 def merge_alterations(patientId, purity, ploidy, mafFp, cnaFp, outFp):
-    muts = pd.read_csv(mafFp, sep = '\t', skiprows = 1)
+    muts = load_maf(mafFp)
+    # muts = pd.read_csv(mafFp, sep = '\t', skiprows = 1)
     cnas = pd.read_csv(cnaFp)
     print(muts.head())
     print(cnas.head())
