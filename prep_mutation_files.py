@@ -52,16 +52,17 @@ def add_absent_mutations(mutdf, absentMuts, bamfp):
     for i, mut in enumerate(absentMuts):
         if i % 1000 == 0:
             print(f"Finished querying {i} mutations")
-        print(f"Running pysamstats for {mut}")
+        # print(f"Running pysamstats for {mut}")
         chrom, start, end, alleles  = mut.split(':')
         ref, alt = alleles.split('>')
         info = pst.stat_coverage(bam, chrom = chrom, start = int(start), end = int(end) + 1, 
                 truncate = True, one_based = True)
+        info = list(info)
         if len(info) == 0:
             # Very rarely no results - skip mutation
             skipCounter += 1
             continue
-        info = list(info)[0]
+        info = info[0]
         d = {
             'Chromosome' : chrom,
             'Start_Position' : start,
@@ -76,34 +77,6 @@ def add_absent_mutations(mutdf, absentMuts, bamfp):
     newdf = pd.DataFrame(records)
     return pd.concat([mutdf, newdf], axis = 0, ignore_index = True)
 
-# def add_absent_mutations(mutdf, absentMuts, bamfp, fastafp):
-#     baseCmd = ['pysamstats', '-t', 'variation', '-u']
-#     for mut in absentMuts:
-#         print(f"Adding info for {mut}")
-#         chrom, start, end, alleles  = mut.split(':')
-#         ref, alt = alleles.split('>')
-#         cmd = baseCmd + ['-c', chrom, '-s', start, '-e', str(int(end) + 1), '--fasta', fastafp, bamfp]
-#         out = sb.run(cmd, capture_output=True, text=True)
-#         print("Finished pysamstats")
-#         # Chrom/pos/ref/matches/
-#         x = out.stdout.split('\n')[1].split('\t')
-#         print(x)
-#         chrom, pos, ref2, matches = x[0:3] + x[5:6]
-#         if ref is not ref2:
-#             raise ValueError("Reference allele from MAF doesn't match BAM reference allele!")
-#         mutdf = mutdf.append(
-#                 {
-#                     'Chromosome' : chrom,
-#                     'Start_Position' : start,
-#                     'End_Position' : end,
-#                     'Reference_Allele' : ref,
-#                     'Tumor_Seq_Allele2' : alt,
-#                     't_ref_count' : matches,
-#                     't_alt_count' : 0
-#                 }, ignore_index = True
-#             )
-#     return mutdf
-   
 def load_maf(fp):
     with open(fp, 'r') as f:
         line = f.readline()

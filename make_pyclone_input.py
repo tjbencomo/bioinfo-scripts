@@ -16,8 +16,12 @@ This script replaces any LCN_EM values of . with 0, following the
 Van Allen Lab's same implementation of FACETS for Terra.
 Major copy number is calculated as total copy number (TCN_EM) - lesser copy number (LCN_EM)
 
+The MAF should be from a single sample. If the patient has multiple tumor samples,
+run this script on each sample individually and then concatenate. Use the Sample ID flag
+to denote whether the sample is primary/metastatic etc
+
 Usage:
-    python make_pyclone_input [patient ID] [FACETS VCF] [Mutect2 MAF] [FACETS CSV] [Output TSV]
+    python make_pyclone_input [Patient ID] [Sample ID] [FACETS VCF] [Mutect2 MAF] [FACETS CSV] [Output TSV]
 """
 import sys
 import os
@@ -79,7 +83,11 @@ def build_cn_lookup(df):
     return out
 
 def isInSegment(start, end, segmentInfo):
-    return start >= segmentInfo[0] & end <= segmentInfo[1]
+    # if start == 22766693 and end == 22766693:
+    #     print(segmentInfo)
+    #     print(f"{start >= segmentInfo[0]}")
+    #     print(f"{end <= segmentInfo[1]}")
+    return start >= segmentInfo[0] and end <= segmentInfo[1]
 
 
 """
@@ -94,17 +102,21 @@ def query_cn_segment(position, lookup):
     if chrom not in lookup:
         print(f"Missing chrom {chrom} in lookup table!")
         return None
+    # if position == 'chr14:22766693:22766693':
+    #         print(lookup[chrom])
     for segment in lookup[chrom]:
         if isInSegment(start, end, segment):
             return segment
-    raise ValueError('Could not find a CN segment containing the mutation')
+    print(f'Could not find a CN segment {position}')
+    return None 
 
 """
 Combine mutations from MAF file with CN segments from FACETS
 with purity/ploidy information
 """
-def merge_alterations(patientId, purity, ploidy, mafFp, cnaFp, outFp):
+def merge_alterations(patientId, sampleId, purity, ploidy, mafFp, cnaFp, outFp):
     muts = load_maf(mafFp)
+    # muts = muts[muts['Start_Position'] == muts['End_Position']]
     # muts = pd.read_csv(mafFp, sep = '\t', skiprows = 1)
     cnas = pd.read_csv(cnaFp)
     print(muts.head())
@@ -116,29 +128,34 @@ def merge_alterations(patientId, purity, ploidy, mafFp, cnaFp, outFp):
     cnInfo = build_cn_lookup(cnas)
 
     muts['mid'] = patientId  + ':' + muts['Chromosome'] + ':' + muts['Start_Position'].astype(str) + ':' + muts['End_Position'].astype(str) + muts['Reference_Allele'] + '>' + muts['Tumor_Seq_Allele2']
-
+    numExcludedMuts = 0
     output = []
     for index, row in muts.iterrows():
         pos = f"{row['Chromosome']}:{row['Start_Position']}:{row['End_Position']}"
         segment = query_cn_segment(pos, cnInfo)
+        # if pos == 'chr14:22766693:22766693':
+        #     print(segment)
         if segment is None:
+            numExcludedMuts += 1
             continue
-        mutInfo = (row['mid'], patientId,  row['t_ref_count'], row['t_alt_count'], segment[3], segment[4], segment[5], purity)
+        mutInfo = (row['mid'], sampleId,  row['t_ref_count'], row['t_alt_count'], segment[3], segment[4], segment[5], purity)
         output.append(mutInfo)
     df = pd.DataFrame(output, columns = ['mutation_id', 'sample_id', 'ref_counts', 
         'alt_counts', 'major_cn', 'minor_cn', 'normal_cn', 'tumour_content'])
+    print(f"Not able to find a CN segment for {numExcludedMuts} mutations")
     return df
 
 
 def main():
     patientId = sys.argv[1]
-    vcfFp = sys.argv[2]
-    mafFp = sys.argv[3]
-    cnaFp = sys.argv[4]
-    outFp = sys.argv[5]
+    sampleId = sys.argv[2]
+    vcfFp = sys.argv[3]
+    mafFp = sys.argv[4]
+    cnaFp = sys.argv[5]
+    outFp = sys.argv[6]
     purity, ploidy = get_purity_ploidy(vcfFp)
     print(f"Purity: {purity} Ploidy: {ploidy}")
-    df = merge_alterations(patientId, purity, ploidy, mafFp, cnaFp, outFp)
+    df = merge_alterations(patientId, sampleId, purity, ploidy, mafFp, cnaFp, outFp)
     df.to_csv(outFp, sep = '\t', index = False)
 
 
